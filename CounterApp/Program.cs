@@ -23,7 +23,7 @@ Console.WriteLine();
 // Direct console output is more appropriate for this simple use case
 for (int i = startValue; i <= endValue; i++)
 {
-    Console.WriteLine($"{i} - I'm hieu");
+    Console.WriteLine(i);
 }
 
 Console.WriteLine();
