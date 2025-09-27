@@ -53,3 +53,20 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# .NET build output directories
+bin/
+obj/
+**/bin/
+**/obj/
+
+# .NET user-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio temp and cache files
+.vs/
+*.tmp
+*.cache
