@@ -1,19 +1,22 @@
 ﻿// Console application that counts from start to end value
 using System.Text;
 
-const int START_VALUE = 1;
-const int END_VALUE = 1000;
+// Configuration - consider moving to appsettings.json for larger applications
+const int DefaultStartValue = 1;
+const int DefaultEndValue = 100; // Reduced from 1000 for better user experience
 
-Console.WriteLine($"Counting from {START_VALUE} to {END_VALUE}:");
+// Allow command line arguments to override defaults
+int startValue = args.Length > 0 && int.TryParse(args[0], out int start) ? start : DefaultStartValue;
+int endValue = args.Length > 1 && int.TryParse(args[1], out int end) ? end : DefaultEndValue;
+
+Console.WriteLine($"Counting from {startValue} to {endValue}:");
 Console.WriteLine();
 
-// Use StringBuilder for better performance when dealing with large ranges
-var output = new StringBuilder();
-for (int i = START_VALUE; i <= END_VALUE; i++)
+// Direct console output is more appropriate for this simple use case
+for (int i = startValue; i <= endValue; i++)
 {
-    output.AppendLine(i.ToString());
+    Console.WriteLine(i);
 }
-Console.Write(output.ToString());
 
 Console.WriteLine();
-Console.WriteLine($"Finished counting to {END_VALUE}!");
+Console.WriteLine($"Finished counting to {endValue}!");
