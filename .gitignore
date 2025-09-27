@@ -57,6 +57,9 @@ dkms.conf
 # .NET build output directories
 bin/
 obj/
+
+# Code review temporary files
+.pr/
 **/bin/
 **/obj/
 
