@@ -11,7 +11,7 @@ function Write-Info {
 }
 
 try {
-    # Validate git repository
+    # Ensure we're in a git repository
     if (-not (Test-Path ".git")) {
         throw "Not in a git repository. Please run this script from the root of a git repository."
     }

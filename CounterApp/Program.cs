@@ -1,5 +1,4 @@
 ﻿// Console application that counts from start to end value
-using System.Text;
 
 // Configuration - consider moving to appsettings.json for larger applications
 const int DefaultStartValue = 1;
