@@ -1,11 +1,19 @@
-﻿// Console application that counts from 1 to 1000
-Console.WriteLine("Counting from 1 to 1000:");
+﻿// Console application that counts from start to end value
+using System.Text;
+
+const int START_VALUE = 1;
+const int END_VALUE = 1000;
+
+Console.WriteLine($"Counting from {START_VALUE} to {END_VALUE}:");
 Console.WriteLine();
 
-for (int i = 1; i <= 1000; i++)
+// Use StringBuilder for better performance when dealing with large ranges
+var output = new StringBuilder();
+for (int i = START_VALUE; i <= END_VALUE; i++)
 {
-    Console.WriteLine(i);
+    output.AppendLine(i.ToString());
 }
+Console.Write(output.ToString());
 
 Console.WriteLine();
-Console.WriteLine("Finished counting to 1000!");
+Console.WriteLine($"Finished counting to {END_VALUE}!");

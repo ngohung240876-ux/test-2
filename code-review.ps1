@@ -2,7 +2,8 @@ param(
     [string]$BaseBranch = "main",
     [switch]$CleanupPatchFiles = $false,
     [switch]$Verbose = $false,
-    [switch]$Help = $false
+    [switch]$Help = $false,
+    [switch]$AutoFix = $true
 )
 
 if ($Help) {
@@ -16,12 +17,14 @@ OPTIONS:
     -BaseBranch <string>     Base branch to compare against (default: main)
     -CleanupPatchFiles       Remove old patch files before generating new ones
     -Verbose                 Show detailed output during execution
+    -AutoFix                 Automatically fix issues found in review (default: true)
     -Help                    Show this help message
 
 EXAMPLES:
-    .\code-review.ps1                           # Basic review against main
+    .\code-review.ps1                           # Basic review against main with auto-fix
     .\code-review.ps1 -BaseBranch develop       # Review against develop branch
     .\code-review.ps1 -Verbose -CleanupPatchFiles  # Verbose output with cleanup
+    .\code-review.ps1 -AutoFix:$false           # Review only, no auto-fix
 
 REQUIREMENTS:
     - Git repository
@@ -154,17 +157,19 @@ Reviewer: PowerShell Script + GitHub Copilot CLI
                         Write-Info "Running AI review for $file..."
                         $prompt = "Review the code changes in $patchFile following the guidelines in $reviewRulesFile. Focus on code quality, maintainability, and potential issues. Provide specific, actionable feedback."
                         
-                        $reviewResult = & copilot $prompt 2>&1
+                        $reviewResult = & copilot -p $prompt --allow-all-tools 2>&1
                         if ($LASTEXITCODE -eq 0) {
-                            $reviewResult | Add-Content -Path $reviewFile
+                            # Clean up encoding issues and format the output
+                            $cleanedResult = $reviewResult -replace '[^\x00-\x7F]', '' -replace 'Γ[^A-Za-z0-9\s]*', '✅' -replace 'Γ[^A-Za-z0-9\s]*', '⚠️'
+                            $cleanedResult | Add-Content -Path $reviewFile -Encoding UTF8
                         } else {
                             "**AI Review Failed:** $reviewResult" | Add-Content -Path $reviewFile
                         }
                     }
                     catch {
-                        "**AI Review Error:** $_" | Add-Content -Path $reviewFile
+                        "**AI Review Error:** $($_.Exception.Message)" | Add-Content -Path $reviewFile
                     }
-                } else {
+                }else {
                     @"
 **Manual Review Required** (GitHub Copilot CLI not available)
 
@@ -194,6 +199,103 @@ $diffContent
         Write-Info "Generated patch files in .pr/ directory"
         if ($CleanupPatchFiles) {
             Write-Info "Use -CleanupPatchFiles to remove patch files after review"
+        }
+        
+        # Step 2: Auto-fix issues if review recommendation is not APPROVE
+        if ($AutoFix) {
+            Write-Info "Checking if auto-fix is needed based on review recommendations..."
+            $reviewContent = Get-Content $reviewFile -Raw
+            
+            if ($reviewContent -match "APPROVE WITH CHANGES|REQUEST CHANGES|REJECT" -and $reviewContent -notmatch "^\*\*APPROVE\*\*(?!\s+WITH)") {
+            Write-Info "Review found issues that need fixing. Running auto-fix..."
+            
+            # Use Copilot CLI to generate fixes
+            if ($copilotAvailable) {
+                try {
+                    $fixPrompt = @"
+Based on the code review report in $reviewFile, automatically fix the identified issues in the source files. 
+Focus on:
+1. Extracting magic numbers to named constants
+2. Improving code structure and maintainability
+3. Addressing performance concerns where possible
+4. Following the review rules in $reviewRulesFile
+
+Apply the fixes directly to the source files and provide a summary of changes made.
+"@
+                    
+                    Write-Info "Running AI-powered auto-fix..."
+                    $fixResult = & copilot -p $fixPrompt --allow-all-tools 2>&1
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Info "Auto-fix completed successfully!"
+                        
+                        # Append fix summary to review file
+                        "`n---`n`n## Auto-Fix Summary`n" | Add-Content -Path $reviewFile -Encoding UTF8
+                        "Generated on: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`n" | Add-Content -Path $reviewFile -Encoding UTF8
+                        
+                        # Clean up encoding issues in fix result
+                        $cleanedFixResult = $fixResult -replace '[^\x00-\x7F\r\n]', '' -replace 'Γ[^A-Za-z0-9\s]*', '✅'
+                        $cleanedFixResult | Add-Content -Path $reviewFile -Encoding UTF8
+                        
+                        # Check if any files were modified
+                        $modifiedAfterFix = git status --porcelain 2>$null
+                        if ($modifiedAfterFix) {
+                            Write-Info "Files were modified during auto-fix:"
+                            Write-Host $modifiedAfterFix -ForegroundColor Yellow
+                            
+                            # Re-run review on fixed files
+                            Write-Info "Re-running review on fixed files..."
+                            $postFixReviewFile = ".pr/REVIEW-AFTER-FIX.md"
+                            
+                            # Create header for post-fix review
+                            @"
+# Post-Fix Code Review Report
+Generated on: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Base branch: $BaseBranch
+Reviewer: PowerShell Script + GitHub Copilot CLI (After Auto-Fix)
+
+---
+
+"@ | Out-File -FilePath $postFixReviewFile -Encoding UTF8
+
+                            # Quick review of changes after fix
+                            $postFixPrompt = @"
+Review the current state of the modified files after auto-fix has been applied. 
+Check if the previously identified issues have been resolved:
+1. Are magic numbers now properly extracted to constants?
+2. Have performance concerns been addressed?
+3. Is the code following the review rules in $reviewRulesFile?
+
+Provide a brief assessment of whether the fixes were successful.
+"@
+                            
+                            $postFixReview = & copilot -p $postFixPrompt --allow-all-tools 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                $cleanedPostFix = $postFixReview -replace '[^\x00-\x7F\r\n]', ''
+                                $cleanedPostFix | Add-Content -Path $postFixReviewFile -Encoding UTF8
+                                Write-Info "Post-fix review saved to: $postFixReviewFile"
+                            }
+                        } else {
+                            Write-Warning "No files were modified during auto-fix. Manual intervention may be required."
+                        }
+                    } else {
+                        Write-Warning "Auto-fix failed: $fixResult"
+                        "**Auto-Fix Failed:** $fixResult" | Add-Content -Path $reviewFile -Encoding UTF8
+                    }
+                }
+                catch {
+                    Write-Error "Auto-fix error: $($_.Exception.Message)"
+                    "**Auto-Fix Error:** $($_.Exception.Message)" | Add-Content -Path $reviewFile -Encoding UTF8
+                }
+            } else {
+                Write-Warning "Auto-fix requires GitHub Copilot CLI. Please install it to enable automatic issue resolution."
+                "`n## Auto-Fix Not Available`nGitHub Copilot CLI is required for automatic issue resolution." | Add-Content -Path $reviewFile -Encoding UTF8
+            }
+            } else {
+                Write-Info "Review approved! No auto-fix needed."
+            }
+        } else {
+            Write-Info "Auto-fix disabled. Use -AutoFix to enable automatic issue resolution."
         }
     }
 }
